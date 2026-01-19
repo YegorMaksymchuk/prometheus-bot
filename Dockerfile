@@ -53,11 +53,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage 4: Runtime - Minimal production image
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 
-# Copy timezone data from builder (if needed)
-COPY --from=base /usr/share/zoneinfo /usr/share/zoneinfo
-
-# Copy CA certificates for HTTPS connections
-COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Note: CA certificates are already included in distroless static image
+# Timezone data not needed - bot only uses time.Now() which doesn't require timezone database
 
 # Copy the compiled binary from builder stage
 COPY --from=builder --chown=nonroot:nonroot /app/kbot /app/kbot
