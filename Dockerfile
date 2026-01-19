@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for Go Telegram Bot
 # Stage 1: Base - Dependencies and Go environment
-FROM golang:1.24.3-alpine AS base
+FROM quay.io/projectquay/golang:1.24.3-alpine AS base
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -22,6 +22,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage 2: Builder - Compile the application
 FROM base AS builder
 
+# Build arguments for multi-platform support
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
+
 # Build arguments for versioning (can be set in CI/CD)
 ARG BUILD_VERSION=unknown
 ARG BUILD_TIME
@@ -31,9 +37,10 @@ ARG VCS_REF
 COPY . .
 
 # Build the binary with optimizations
+# Using TARGETOS and TARGETARCH for cross-compilation support
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build \
+    GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s -X main.version=${BUILD_VERSION} -X main.buildTime=${BUILD_TIME} -X main.vcsRef=${VCS_REF}" \
     -o /app/kbot \
     ./cmd/kbot/main.go
