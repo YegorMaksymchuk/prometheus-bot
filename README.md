@@ -56,6 +56,16 @@ go build -o kbot cmd/kbot/main.go
 ./kbot
 ```
 
+## Build Image and Run in Container
+1. Build container
+```bash
+docker build -t kbot:latest .
+```
+2. Run container
+```bash
+docker run -e TELE_TOKEN=${TELE_TOKEN} kbot:latest
+```
+
 ## Development Rules
 
 ### Code Style

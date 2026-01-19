@@ -1,0 +1,61 @@
+# Git files
+.git/
+.gitignore
+
+# Binaries
+kbot
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Test and coverage files
+*.out
+coverage.out
+*.coverprofile
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment variables (never include secrets)
+.env
+.env.local
+.env.*.local
+
+# Log files
+*.log
+
+# Binary output directories
+bin/
+dist/
+
+# Debug files
+debug
+
+# Temporary files
+tmp/
+temp/
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Documentation (optional, can be included if needed)
+# README.md
+
+# Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
