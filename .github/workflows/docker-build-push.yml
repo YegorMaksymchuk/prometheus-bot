@@ -11,6 +11,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/prometheus-bot
+  IMAGE_NAME_LOWERCASE: ${{ github.repository_owner }}/prometheus-bot
 
 jobs:
   build-and-push:
@@ -35,11 +36,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Convert repository owner to lowercase
+        id: repo_lowercase
+        run: |
+          REPO_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "owner_lowercase=$REPO_OWNER_LOWER" >> $GITHUB_OUTPUT
+          echo "Using lowercase owner: $REPO_OWNER_LOWER"
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.repo_lowercase.outputs.owner_lowercase }}/prometheus-bot
           tags: |
             type=ref,event=branch
             type=ref,event=pr
