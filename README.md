@@ -57,6 +57,8 @@ go build -o kbot cmd/kbot/main.go
 ```
 
 ## Build Image and Run in Container
+
+### Local Build
 1. Build container
 ```bash
 docker build -t kbot:latest .
@@ -65,6 +67,27 @@ docker build -t kbot:latest .
 ```bash
 docker run -e TELE_TOKEN=${TELE_TOKEN} kbot:latest
 ```
+
+### Using Pre-built Image from GitHub Container Registry
+
+Images are automatically built and pushed to GitHub Container Registry via GitHub Actions.
+
+```bash
+# Pull the image
+docker pull ghcr.io/yehormaksymchuk/prometheus-bot:latest
+
+# Run container
+docker run -e TELE_TOKEN=${TELE_TOKEN} ghcr.io/yehormaksymchuk/prometheus-bot:latest
+```
+
+### CI/CD
+
+Docker images are automatically built and pushed to `ghcr.io/yehormaksymchuk/prometheus-bot` on:
+- Push to `main` branch (tags as `latest`)
+- Git tags starting with `v*` (e.g., `v1.0.0`)
+- Pull requests (build only, no push)
+
+See `.github/workflows/docker-build-push.yml` for details.
 
 ## Development Rules
 

@@ -31,7 +31,7 @@ kbot/
 
 ```yaml
 image:
-  repository: ghcr.io/YegorMaksymchuk
+  repository: ghcr.io/yehormaksymchuk
   tag: latest
   arch: amd64
 
@@ -43,8 +43,17 @@ teleToken:
 ## Результат deployment
 
 - **Назва контейнера**: `{{ .Release.Name }}` (буде `kbot` при встановленні)
-- **Образ**: `ghcr.io/YegorMaksymchuk/kbot:latest-amd64`
+- **Образ**: `ghcr.io/yehormaksymchuk/prometheus-bot:latest` (multi-arch: amd64, arm64)
 - **Змінна середовища**: `TELE_TOKEN` з Secret `kbot-secret`, ключ `tele-token`
+
+## CI/CD
+
+Автоматичний білд та push Docker образів налаштовано через GitHub Actions:
+- **Workflow**: `.github/workflows/docker-build-push.yml`
+- **Registry**: GitHub Container Registry (ghcr.io)
+- **Тригери**: Push до main, git tags (v*), pull requests
+- **Multi-arch**: Підтримка amd64 та arm64 платформ
+- **Образ**: `ghcr.io/yehormaksymchuk/prometheus-bot:latest`
 
 ## Наступні кроки
 
