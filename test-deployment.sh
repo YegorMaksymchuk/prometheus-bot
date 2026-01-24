@@ -67,7 +67,7 @@ if [ ! -f "$CHART_FILE" ]; then
 fi
 
 # Видалення попереднього встановлення (якщо є)
-helm uninstall kbot 2>/dev/null || echo "Чарт не встановлено, продовжуємо..."
+helm uninstall kbot -n $NAMESPACE 2>/dev/null || echo "Чарт не встановлено, продовжуємо..."
 
 # Встановлення чарту
 helm install kbot ./$CHART_FILE \
