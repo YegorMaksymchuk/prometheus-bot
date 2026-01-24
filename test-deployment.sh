@@ -34,22 +34,25 @@ kubectl cluster-info || {
 kubectl get nodes
 echo "✓ Кластер доступний"
 
-# Створення namespace (опційно)
-NAMESPACE="default"
+# Створення namespace
+NAMESPACE="kbot"
 echo ""
-echo "=== Використання namespace: $NAMESPACE ==="
+echo "=== Створення namespace: $NAMESPACE ==="
+kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+echo "✓ Namespace $NAMESPACE створено/перевірено"
 
 # Створення Secret з токеном
 echo ""
 echo "=== Створення Kubernetes Secret ==="
 kubectl create secret generic kbot-secret \
     --from-literal=tele-token="$TELE_TOKEN" \
+    --namespace=$NAMESPACE \
     --dry-run=client -o yaml | kubectl apply -f -
 
-echo "✓ Secret створено/оновлено"
+echo "✓ Secret створено/оновлено в namespace $NAMESPACE"
 
 # Перевірка Secret
-kubectl get secret kbot-secret
+kubectl get secret kbot-secret -n $NAMESPACE
 echo "✓ Secret перевірено"
 
 # Встановлення Helm чарту
@@ -68,25 +71,27 @@ helm uninstall kbot 2>/dev/null || echo "Чарт не встановлено, �
 
 # Встановлення чарту
 helm install kbot ./$CHART_FILE \
+    --namespace=$NAMESPACE \
+    --create-namespace \
     --set teleToken.secretName=kbot-secret \
     --set teleToken.secretKey=tele-token \
     --wait --timeout 5m
 
-echo "✓ Helm чарт встановлено"
+echo "✓ Helm чарт встановлено в namespace $NAMESPACE"
 
 # Перевірка статусу
 echo ""
 echo "=== Перевірка статусу деплою ==="
-kubectl get pods -l app.kubernetes.io/name=kbot
-kubectl get svc -l app.kubernetes.io/name=kbot
-kubectl get deployment -l app.kubernetes.io/name=kbot
+kubectl get pods -l app.kubernetes.io/name=kbot -n $NAMESPACE
+kubectl get svc -l app.kubernetes.io/name=kbot -n $NAMESPACE
+kubectl get deployment -l app.kubernetes.io/name=kbot -n $NAMESPACE
 
 # Очікування готовності подів
 echo ""
 echo "=== Очікування готовності подів ==="
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kbot --timeout=300s || {
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=kbot -n $NAMESPACE --timeout=300s || {
     echo "Помилка: под не став готовим за 5 хвилин"
-    echo "Перевірте логи: kubectl logs -l app.kubernetes.io/name=kbot"
+    echo "Перевірте логи: kubectl logs -l app.kubernetes.io/name=kbot -n $NAMESPACE"
     exit 1
 }
 
@@ -95,26 +100,27 @@ echo "✓ Поди готові"
 # Перевірка логів
 echo ""
 echo "=== Перевірка логів ==="
-POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=kbot -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=kbot -n $NAMESPACE -o jsonpath='{.items[0].metadata.name}')
 echo "Под: $POD_NAME"
-kubectl logs "$POD_NAME" --tail=20 || echo "Логи недоступні"
+kubectl logs "$POD_NAME" -n $NAMESPACE --tail=20 || echo "Логи недоступні"
 
 # Перевірка змінної середовища
 echo ""
 echo "=== Перевірка змінної середовища TELE_TOKEN ==="
-kubectl exec "$POD_NAME" -- env | grep TELE_TOKEN && echo "✓ TELE_TOKEN встановлено" || echo "✗ TELE_TOKEN не знайдено"
+kubectl exec "$POD_NAME" -n $NAMESPACE -- env | grep TELE_TOKEN && echo "✓ TELE_TOKEN встановлено" || echo "✗ TELE_TOKEN не знайдено"
 
 # Фінальний статус
 echo ""
 echo "=== Фінальний статус ==="
-kubectl get all -l app.kubernetes.io/name=kbot
+kubectl get all -l app.kubernetes.io/name=kbot -n $NAMESPACE
 
 echo ""
 echo "=== Тестування завершено успішно! ==="
 echo ""
 echo "Для перегляду логів:"
-echo "  kubectl logs -l app.kubernetes.io/name=kbot -f"
+echo "  kubectl logs -l app.kubernetes.io/name=kbot -n $NAMESPACE -f"
 echo ""
 echo "Для видалення деплою:"
-echo "  helm uninstall kbot"
-echo "  kubectl delete secret kbot-secret"
+echo "  helm uninstall kbot -n $NAMESPACE"
+echo "  kubectl delete secret kbot-secret -n $NAMESPACE"
+echo "  kubectl delete namespace $NAMESPACE"

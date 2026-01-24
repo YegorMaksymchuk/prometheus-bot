@@ -14,7 +14,17 @@ kubectl cluster-info
 kubectl get nodes
 ```
 
-## Крок 2: Створення Secret з Telegram токеном
+## Крок 2: Створення namespace
+
+```bash
+# Створити namespace kbot
+kubectl create namespace kbot
+
+# Перевірити
+kubectl get namespace kbot
+```
+
+## Крок 3: Створення Secret з Telegram токеном
 
 ```bash
 cd /Users/yehormaksymchuk/sources/prometheus/05_Kubernetes_in_action/05_Task/prometheus-bot
@@ -22,26 +32,31 @@ cd /Users/yehormaksymchuk/sources/prometheus/05_Kubernetes_in_action/05_Task/pro
 # Отримати токен з .env
 TELE_TOKEN=$(grep TELE_TOKEN .env | cut -d'=' -f2)
 
-# Створити Secret
+# Створити Secret в namespace kbot
 kubectl create secret generic kbot-secret \
-    --from-literal=tele-token="$TELE_TOKEN"
+    --from-literal=tele-token="$TELE_TOKEN" \
+    --namespace=kbot
 
 # Перевірити
-kubectl get secret kbot-secret
-kubectl describe secret kbot-secret
+kubectl get secret kbot-secret -n kbot
+kubectl describe secret kbot-secret -n kbot
 ```
 
-## Крок 3: Встановлення Helm чарту
+## Крок 4: Встановлення Helm чарту
 
 ```bash
-# Встановити чарт
+# Встановити чарт в namespace kbot
 helm install kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
     --set teleToken.secretName=kbot-secret \
     --set teleToken.secretKey=tele-token \
     --wait --timeout 5m
 
 # Або з явними значеннями
 helm install kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
     --set image.repository=ghcr.io/YegorMaksymchuk \
     --set image.tag=latest \
     --set image.arch=amd64 \
@@ -49,76 +64,82 @@ helm install kbot ./kbot-0.1.0.tgz \
     --set teleToken.secretKey=tele-token
 ```
 
-## Крок 4: Перевірка статусу
+## Крок 5: Перевірка статусу
 
 ```bash
 # Перевірити под
-kubectl get pods -l app.kubernetes.io/name=kbot
+kubectl get pods -l app.kubernetes.io/name=kbot -n kbot
 
 # Перевірити deployment
-kubectl get deployment kbot
+kubectl get deployment kbot -n kbot
 
 # Перевірити service
-kubectl get svc kbot
+kubectl get svc kbot -n kbot
 
 # Перевірити всі ресурси
-kubectl get all -l app.kubernetes.io/name=kbot
+kubectl get all -l app.kubernetes.io/name=kbot -n kbot
+
+# Перевірити namespace
+kubectl get all -n kbot
 ```
 
-## Крок 5: Перевірка логів
+## Крок 6: Перевірка логів
 
 ```bash
 # Отримати ім'я поду
-POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=kbot -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -l app.kubernetes.io/name=kbot -n kbot -o jsonpath='{.items[0].metadata.name}')
 
 # Переглянути логи
-kubectl logs $POD_NAME
+kubectl logs $POD_NAME -n kbot
 
 # Стежити за логами
-kubectl logs -f $POD_NAME
+kubectl logs -f $POD_NAME -n kbot
 ```
 
-## Крок 6: Перевірка змінної середовища
+## Крок 7: Перевірка змінної середовища
 
 ```bash
 # Перевірити, що TELE_TOKEN встановлено
-kubectl exec $POD_NAME -- env | grep TELE_TOKEN
+kubectl exec $POD_NAME -n kbot -- env | grep TELE_TOKEN
 
 # Перевірити значення (без виведення)
-kubectl exec $POD_NAME -- sh -c 'echo $TELE_TOKEN | cut -c1-20'
+kubectl exec $POD_NAME -n kbot -- sh -c 'echo $TELE_TOKEN | cut -c1-20'
 ```
 
-## Крок 7: Перевірка опису поду
+## Крок 8: Перевірка опису поду
 
 ```bash
 # Детальний опис поду
-kubectl describe pod $POD_NAME
+kubectl describe pod $POD_NAME -n kbot
 
 # Перевірити конфігурацію deployment
-kubectl get deployment kbot -o yaml
+kubectl get deployment kbot -n kbot -o yaml
 ```
 
-## Крок 8: Тестування роботи (якщо образ доступний)
+## Крок 9: Тестування роботи (якщо образ доступний)
 
 ```bash
 # Якщо под не запускається, перевірте події
-kubectl get events --sort-by='.lastTimestamp'
+kubectl get events -n kbot --sort-by='.lastTimestamp'
 
 # Перевірте причину помилки
-kubectl describe pod $POD_NAME | grep -A 10 "Events:"
+kubectl describe pod $POD_NAME -n kbot | grep -A 10 "Events:"
 ```
 
 ## Видалення тестового деплою
 
 ```bash
 # Видалити Helm release
-helm uninstall kbot
+helm uninstall kbot -n kbot
 
 # Видалити Secret (опційно)
-kubectl delete secret kbot-secret
+kubectl delete secret kbot-secret -n kbot
 
-# Перевірити, що все видалено
-kubectl get all -l app.kubernetes.io/name=kbot
+# Видалити namespace (видалить всі ресурси)
+kubectl delete namespace kbot
+
+# Або перевірити, що все видалено
+kubectl get all -n kbot
 ```
 
 ## Автоматичне тестування
@@ -144,8 +165,8 @@ docker pull ghcr.io/YegorMaksymchuk/kbot:latest-amd64
 
 **Рішення**: Перевірте назву та ключ:
 ```bash
-kubectl get secrets
-kubectl describe secret kbot-secret
+kubectl get secrets -n kbot
+kubectl describe secret kbot-secret -n kbot
 ```
 
 ### Проблема: TELE_TOKEN не встановлено
@@ -153,6 +174,7 @@ kubectl describe secret kbot-secret
 **Рішення**: Перевірте значення в values.yaml та перевстановіть чарт:
 ```bash
 helm upgrade kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
     --set teleToken.secretName=kbot-secret \
     --set teleToken.secretKey=tele-token
 ```
