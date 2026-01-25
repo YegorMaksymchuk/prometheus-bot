@@ -268,11 +268,18 @@ release-notes: ## Generate release notes from template
 		echo "Error: RELEASE_NOTES_TEMPLATE.md not found"; \
 		exit 1; \
 	fi
-	@CHART_VERSION=$(CHART_VERSION) \
-	 RELEASE_TAG=$(RELEASE_TAG) \
-	 RELEASE_URL="https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/$(RELEASE_TAG)/$(CHART_NAME)-$(CHART_VERSION).tgz" \
-	 INSTALL_INSTRUCTION="helm install kbot https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/$(RELEASE_TAG)/$(CHART_NAME)-$(CHART_VERSION).tgz --namespace=kbot --create-namespace" \
-	 envsubst < RELEASE_NOTES_TEMPLATE.md > $(RELEASE_NOTES_FILE)
+	@RELEASE_URL="https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/$(RELEASE_TAG)/$(CHART_NAME)-$(CHART_VERSION).tgz" && \
+	 INSTALL_INSTRUCTION="helm install $(CHART_NAME) https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/$(RELEASE_TAG)/$(CHART_NAME)-$(CHART_VERSION).tgz --namespace=kbot --create-namespace --set teleToken.secretName=kbot-secret --set teleToken.secretKey=tele-token" && \
+	 export CHART_VERSION RELEASE_TAG RELEASE_URL INSTALL_INSTRUCTION && \
+	 if command -v envsubst >/dev/null 2>&1; then \
+		envsubst < RELEASE_NOTES_TEMPLATE.md > $(RELEASE_NOTES_FILE); \
+	 else \
+		sed -e "s/\$${CHART_VERSION}/$(CHART_VERSION)/g" \
+		    -e "s/\$${RELEASE_TAG}/$(RELEASE_TAG)/g" \
+		    -e "s|\$${RELEASE_URL}|$$RELEASE_URL|g" \
+		    -e "s|\$${INSTALL_INSTRUCTION}|$$INSTALL_INSTRUCTION|g" \
+		    RELEASE_NOTES_TEMPLATE.md > $(RELEASE_NOTES_FILE); \
+	 fi
 	@echo "Release notes generated: $(RELEASE_NOTES_FILE)"
 
 release-create: release-package release-notes ## Create GitHub release

@@ -70,6 +70,9 @@ jobs:
           echo "file=$CHART_FILE" >> $GITHUB_OUTPUT
           echo "Chart packaged: $CHART_FILE"
 
+      - name: Install gettext (for envsubst)
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
       - name: Generate release notes
         id: notes
         env:
@@ -87,6 +90,7 @@ jobs:
           echo "content<<EOF" >> $GITHUB_OUTPUT
           cat RELEASE_NOTES.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+          echo "Release notes generated successfully"
 
       - name: Upload chart artifact
         uses: actions/upload-artifact@v4
