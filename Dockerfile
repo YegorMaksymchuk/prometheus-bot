@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for Go Telegram Bot
 # Stage 1: Base - Dependencies and Go environment
-FROM quay.io/projectquay/golang:1.24.3-alpine AS base
+FROM golang:1.24-alpine AS base
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -51,10 +51,10 @@ FROM base AS test
 # Copy source code
 COPY . .
 
-# Run tests with race detection and coverage
+# Run tests with coverage (race detection requires CGO which is disabled)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go test -v -race -coverprofile=coverage.out ./... && \
+    go test -v -coverprofile=coverage.out ./... && \
     go tool cover -html=coverage.out -o coverage.html || true
 
 # Stage 4: Runtime - Minimal production image
