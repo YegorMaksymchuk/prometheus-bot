@@ -4,7 +4,8 @@
 *.dll
 *.so
 *.dylib
-kbot
+/kbot
+bin/kbot*
 
 # Test binary, built with `go test -c`
 *.test
