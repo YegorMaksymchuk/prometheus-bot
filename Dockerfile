@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for Go Telegram Bot
 # Stage 1: Base - Dependencies and Go environment
-FROM quay.io/projectquay/golang:1.24.3-alpine AS base
+FROM golang:1.24-alpine AS base
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
