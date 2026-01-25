@@ -134,10 +134,36 @@ gh release download v1.0.0
 
 ### Помилка: GitHub CLI не встановлено
 
+**Помилка:**
+```
+Error: GitHub CLI (gh) is not installed
+```
+
 **Рішення:**
 ```bash
+# macOS
 brew install gh
+
+# Linux - дивіться https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+# Windows - дивіться https://github.com/cli/cli/blob/trunk/docs/install_windows.md
+
+# Після встановлення автентифікуйтеся
 gh auth login
+```
+
+**Альтернатива:** Використайте GitHub Actions workflow (не потребує локального встановлення `gh`)
+
+### Помилка: GitHub CLI не автентифіковано
+
+**Помилка:**
+```
+Warning: GitHub CLI is not authenticated
+```
+
+**Рішення:**
+```bash
+gh auth login
+# Слідуйте інструкціям на екрані
 ```
 
 ### Помилка: Реліз вже існує

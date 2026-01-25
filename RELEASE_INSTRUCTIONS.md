@@ -1,46 +1,89 @@
 # Інструкції для створення GitHub релізу
 
-## Передумови
+## Автоматизований процес (Рекомендовано)
+
+Процес створення релізу автоматизовано через Make targets та GitHub Actions. Дивіться детальну документацію в `RELEASE_AUTOMATION.md`.
+
+### Варіант 1: Локально через Make (потребує GitHub CLI)
+
+```bash
+# Встановити GitHub CLI (якщо ще не встановлено)
+brew install gh
+gh auth login
+
+# Створити реліз
+make release RELEASE_TAG=v1.0.0
+```
+
+Це автоматично:
+1. Згенерує release notes з шаблону
+2. Запакує Helm чарт
+3. Створить GitHub реліз
+4. Завантажить Helm пакет
+
+### Варіант 2: Через GitHub Actions (Рекомендовано)
+
+1. Відкрити: https://github.com/YegorMaksymchuk/prometheus-bot/actions/workflows/release.yml
+2. Натиснути "Run workflow"
+3. Заповнити параметри:
+   - `version`: `0.1.0` (версія чарту)
+   - `release_tag`: `v1.0.0` (git tag)
+   - `release_title`: `First Release` (опційно)
+   - `prerelease`: `false` (опційно)
+4. Натиснути "Run workflow"
+
+Workflow автоматично:
+- Валідує та запаковує чарт
+- Генерує release notes
+- Створює git tag
+- Створює GitHub реліз
+- Завантажує Helm пакет
+
+## Ручний процес (якщо потрібно)
+
+### Передумови
 
 1. Встановіть GitHub CLI: `brew install gh` (macOS) або з [офіційного сайту](https://cli.github.com/)
 2. Автентифікуйтеся: `gh auth login`
-3. Переконайтеся, що ви знаходитесь в гілці `main` або змерджте гілку `feature/helm-chart` в `main`
+3. Переконайтеся, що ви знаходитесь в гілці `main`
 
-## Кроки створення релізу
+### Кроки створення релізу
 
-### 1. Змерджте гілку в main (якщо ще не зроблено)
+#### 1. Запакувати Helm чарт
 
 ```bash
-git checkout main
-git merge feature/helm-chart
-git push origin main
+make release-package
+# Або вручну:
+helm package kbot
 ```
 
-### 2. Створіть GitHub реліз
+#### 2. Згенерувати release notes
+
+```bash
+make release-notes RELEASE_TAG=v1.0.0
+# Або вручну відредагувати RELEASE_NOTES_TEMPLATE.md
+```
+
+#### 3. Створити GitHub реліз
 
 ```bash
 gh release create v1.0.0 \
   --title "First Release" \
-  --notes "First release of prometheus-bot with Helm chart support" \
+  --notes-file RELEASE_NOTES.md \
   kbot-0.1.0.tgz
 ```
 
-Або інтерактивно:
-
-```bash
-gh release create
-```
-
-### 3. Перевірте реліз
+#### 4. Перевірити реліз
 
 ```bash
 gh release list
+gh release view v1.0.0
 ```
 
-### 4. Завантажте Helm пакет (якщо не додано при створенні)
+#### 5. Завантажити Helm пакет (якщо не додано при створенні)
 
 ```bash
-gh release upload v1.0.0 kbot-0.1.0.tgz
+gh release upload v1.0.0 kbot-0.1.0.tgz --clobber
 ```
 
 ## URL до Helm пакету

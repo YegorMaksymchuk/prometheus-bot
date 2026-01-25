@@ -67,13 +67,33 @@ teleToken:
 - **Образ**: `ghcr.io/yehormaksymchuk/prometheus-bot:latest`
 - **Кешування**: Використовує GitHub Actions cache для прискорення білдів
 
-## Наступні кроки
+## Створення релізу
 
-1. Встановити GitHub CLI: `brew install gh`
-2. Автентифікуватися: `gh auth login`
-3. Змерджити гілку в main (якщо потрібно)
-4. Створити реліз: `gh release create v1.0.0 --title "First Release" kbot-0.1.0.tgz`
-5. URL після релізу: `https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/v1.0.0/kbot-0.1.0.tgz`
+Процес створення релізу автоматизовано. Дивіться детальну документацію в `RELEASE_AUTOMATION.md`.
+
+### Швидкий старт
+
+**Варіант 1: Через Make (локально)**
+```bash
+# Встановити GitHub CLI (якщо потрібно)
+brew install gh
+gh auth login
+
+# Створити реліз
+make release RELEASE_TAG=v1.0.0
+```
+
+**Варіант 2: Через GitHub Actions (рекомендовано)**
+1. Відкрити: https://github.com/YegorMaksymchuk/prometheus-bot/actions/workflows/release.yml
+2. Натиснути "Run workflow"
+3. Заповнити параметри та запустити
+
+### Результат
+
+Після створення релізу:
+- Helm пакет доступний за URL: `https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/v1.0.0/kbot-0.1.0.tgz`
+- Release notes автоматично згенеровані з шаблону
+- Git tag створено автоматично
 
 ## Тестування
 
