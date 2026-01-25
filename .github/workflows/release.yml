@@ -1,0 +1,163 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version (e.g., 0.1.0)'
+        required: true
+        type: string
+      release_tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      release_title:
+        description: 'Release title'
+        required: false
+        default: 'Release'
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CHART_DIR: kbot
+  CHART_NAME: kbot
+  REPO_OWNER: YegorMaksymchuk
+  REPO_NAME: prometheus-bot
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      chart_version: ${{ steps.chart_version.outputs.version }}
+      chart_file: ${{ steps.package.outputs.file }}
+      release_notes: ${{ steps.notes.outputs.content }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Get chart version
+        id: chart_version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            # Update Chart.yaml version if provided
+            sed -i "s/^version:.*/version: ${{ inputs.version }}/" ${{ env.CHART_DIR }}/Chart.yaml
+          fi
+          VERSION=$(grep '^version:' ${{ env.CHART_DIR }}/Chart.yaml | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Chart version: $VERSION"
+
+      - name: Lint Helm chart
+        run: helm lint ${{ env.CHART_DIR }}
+
+      - name: Package Helm chart
+        id: package
+        run: |
+          helm package ${{ env.CHART_DIR }}
+          CHART_FILE=$(ls ${{ env.CHART_NAME }}-*.tgz)
+          echo "file=$CHART_FILE" >> $GITHUB_OUTPUT
+          echo "Chart packaged: $CHART_FILE"
+
+      - name: Install gettext (for envsubst)
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
+      - name: Generate release notes
+        id: notes
+        env:
+          CHART_VERSION: ${{ steps.chart_version.outputs.version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_URL: https://github.com/${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}/releases/download/${{ inputs.release_tag }}/${{ steps.package.outputs.file }}
+          INSTALL_INSTRUCTION: helm install ${{ env.CHART_NAME }} https://github.com/${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}/releases/download/${{ inputs.release_tag }}/${{ steps.package.outputs.file }} --namespace=kbot --create-namespace --set teleToken.secretName=kbot-secret --set teleToken.secretKey=tele-token
+        run: |
+          if [ ! -f "RELEASE_NOTES_TEMPLATE.md" ]; then
+            echo "Error: RELEASE_NOTES_TEMPLATE.md not found"
+            exit 1
+          fi
+          export CHART_VERSION RELEASE_TAG RELEASE_URL INSTALL_INSTRUCTION
+          envsubst < RELEASE_NOTES_TEMPLATE.md > RELEASE_NOTES.md
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          cat RELEASE_NOTES.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Release notes generated successfully"
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: ${{ steps.package.outputs.file }}
+          retention-days: 7
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Download chart artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "${{ inputs.release_tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag ${{ inputs.release_tag }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag ${{ inputs.release_tag }} does not exist, will be created"
+          fi
+
+      - name: Create git tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git tag -a "${{ inputs.release_tag }}" -m "Release ${{ inputs.release_tag }}"
+          git push origin "${{ inputs.release_tag }}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_title }} ${{ inputs.release_tag }}
+          body: ${{ needs.prepare-release.outputs.release_notes }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            ${{ needs.prepare-release.outputs.chart_file }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output release information
+        run: |
+          echo "=== Release Created Successfully ==="
+          echo "Release Tag: ${{ inputs.release_tag }}"
+          echo "Chart Version: ${{ needs.prepare-release.outputs.chart_version }}"
+          echo "Chart File: ${{ needs.prepare-release.outputs.chart_file }}"
+          echo ""
+          echo "Release URL: https://github.com/${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}/releases/tag/${{ inputs.release_tag }}"
+          echo "Chart URL: https://github.com/${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}/releases/download/${{ inputs.release_tag }}/${{ needs.prepare-release.outputs.chart_file }}"
+          echo ""
+          echo "Installation command:"
+          echo "helm install ${{ env.CHART_NAME }} https://github.com/${{ env.REPO_OWNER }}/${{ env.REPO_NAME }}/releases/download/${{ inputs.release_tag }}/${{ needs.prepare-release.outputs.chart_file }} --namespace=kbot --create-namespace"

@@ -50,6 +50,7 @@ BUILDER_NAME := multiarch-builder
 .PHONY: linux arm macos windows all
 .PHONY: image docker-test docker-test-all docker-run docker-build-all
 .PHONY: setup-buildx
+.PHONY: release release-package release-create release-upload release-notes
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -234,6 +235,96 @@ docker-build-all: setup-buildx ## Build Docker images for all platforms
 		.
 	@echo "Multi-platform build completed (images not loaded, use 'docker buildx imagetools inspect' to verify)"
 
+# Release targets
+CHART_DIR := kbot
+CHART_NAME := kbot
+RELEASE_TAG ?= v1.0.0
+RELEASE_TITLE ?= Release $(RELEASE_TAG)
+RELEASE_NOTES_FILE := RELEASE_NOTES.md
+CHART_VERSION := $(shell grep '^version:' $(CHART_DIR)/Chart.yaml | awk '{print $$2}')
+
+release: check-gh release-notes release-package release-create release-upload ## Create GitHub release with Helm chart
+	@echo ""
+	@echo "=== Release $(RELEASE_TAG) created successfully! ==="
+	@echo "Chart package: $(CHART_NAME)-$(CHART_VERSION).tgz"
+	@echo "Release URL: https://github.com/YegorMaksymchuk/prometheus-bot/releases/tag/$(RELEASE_TAG)"
+	@echo "Chart URL: https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/$(RELEASE_TAG)/$(CHART_NAME)-$(CHART_VERSION).tgz"
+
+check-gh: ## Check if GitHub CLI is installed
+	@if ! command -v gh >/dev/null 2>&1; then \
+		echo "Error: GitHub CLI (gh) is not installed"; \
+		echo ""; \
+		echo "Install it:"; \
+		echo "  macOS:   brew install gh"; \
+		echo "  Linux:   See https://github.com/cli/cli/blob/trunk/docs/install_linux.md"; \
+		echo "  Windows: See https://github.com/cli/cli/blob/trunk/docs/install_windows.md"; \
+		echo ""; \
+		echo "After installation, authenticate:"; \
+		echo "  gh auth login"; \
+		echo ""; \
+		echo "Alternatively, use GitHub Actions workflow for releases:"; \
+		echo "  https://github.com/YegorMaksymchuk/prometheus-bot/actions/workflows/release.yml"; \
+		exit 1; \
+	fi
+	@if ! gh auth status >/dev/null 2>&1; then \
+		echo "Warning: GitHub CLI is not authenticated"; \
+		echo "Run: gh auth login"; \
+		exit 1; \
+	fi
+
+release-package: ## Package Helm chart
+	@echo "=== Packaging Helm chart ==="
+	@if [ ! -d "$(CHART_DIR)" ]; then \
+		echo "Error: Chart directory $(CHART_DIR) not found"; \
+		exit 1; \
+	fi
+	@echo "Linting chart..."
+	@helm lint $(CHART_DIR) || (echo "Chart linting failed!" && exit 1)
+	@echo "Packaging chart..."
+	@helm package $(CHART_DIR)
+	@echo "Chart packaged: $(CHART_NAME)-$(CHART_VERSION).tgz"
+
+release-notes: ## Generate release notes from template
+	@echo "=== Generating release notes ==="
+	@if [ ! -f "RELEASE_NOTES_TEMPLATE.md" ]; then \
+		echo "Error: RELEASE_NOTES_TEMPLATE.md not found"; \
+		exit 1; \
+	fi
+	@RELEASE_URL="https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/$(RELEASE_TAG)/$(CHART_NAME)-$(CHART_VERSION).tgz" && \
+	 INSTALL_INSTRUCTION="helm install $(CHART_NAME) https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/$(RELEASE_TAG)/$(CHART_NAME)-$(CHART_VERSION).tgz --namespace=kbot --create-namespace --set teleToken.secretName=kbot-secret --set teleToken.secretKey=tele-token" && \
+	 export CHART_VERSION RELEASE_TAG RELEASE_URL INSTALL_INSTRUCTION && \
+	 if command -v envsubst >/dev/null 2>&1; then \
+		envsubst < RELEASE_NOTES_TEMPLATE.md > $(RELEASE_NOTES_FILE); \
+	 else \
+		sed -e "s/\$${CHART_VERSION}/$(CHART_VERSION)/g" \
+		    -e "s/\$${RELEASE_TAG}/$(RELEASE_TAG)/g" \
+		    -e "s|\$${RELEASE_URL}|$$RELEASE_URL|g" \
+		    -e "s|\$${INSTALL_INSTRUCTION}|$$INSTALL_INSTRUCTION|g" \
+		    RELEASE_NOTES_TEMPLATE.md > $(RELEASE_NOTES_FILE); \
+	 fi
+	@echo "Release notes generated: $(RELEASE_NOTES_FILE)"
+
+release-create: check-gh release-package release-notes ## Create GitHub release
+	@echo "=== Creating GitHub release $(RELEASE_TAG) ==="
+	@if gh release view $(RELEASE_TAG) >/dev/null 2>&1; then \
+		echo "Release $(RELEASE_TAG) already exists. Use 'make release-upload' to update it."; \
+		exit 1; \
+	fi
+	@gh release create $(RELEASE_TAG) \
+		--title "$(RELEASE_TITLE)" \
+		--notes-file $(RELEASE_NOTES_FILE) \
+		$(CHART_NAME)-$(CHART_VERSION).tgz
+	@echo "Release created successfully"
+
+release-upload: check-gh release-package ## Upload chart to existing release
+	@echo "=== Uploading chart to release $(RELEASE_TAG) ==="
+	@if ! gh release view $(RELEASE_TAG) >/dev/null 2>&1; then \
+		echo "Error: Release $(RELEASE_TAG) does not exist. Create it first with 'make release-create'"; \
+		exit 1; \
+	fi
+	@gh release upload $(RELEASE_TAG) $(CHART_NAME)-$(CHART_VERSION).tgz --clobber
+	@echo "Chart uploaded successfully"
+
 # Cleanup
 clean: ## Remove test results, artifacts, binaries, and Docker images
 	@echo "Cleaning up..."
@@ -250,4 +341,7 @@ clean: ## Remove test results, artifacts, binaries, and Docker images
 		echo "Removing image: $$img"; \
 		docker rmi $$img 2>/dev/null || true; \
 	done
+	@echo "Removing Helm chart packages..."
+	@rm -f $(CHART_NAME)-*.tgz
+	@rm -f $(RELEASE_NOTES_FILE)
 	@echo "Cleanup completed"

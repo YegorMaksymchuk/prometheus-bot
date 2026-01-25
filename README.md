@@ -32,7 +32,11 @@ This is a Telegram bot project written in Go language. The bot is designed to ha
 │   └── templates/
 ├── .github/
 │   └── workflows/
-│       └── docker-build-push.yml
+│       ├── docker-build-push.yml
+│       └── release.yml
+├── RELEASE_NOTES_TEMPLATE.md
+├── RELEASE_AUTOMATION.md
+├── RELEASE_INSTRUCTIONS.md
 ├── go.mod
 ├── go.sum
 ├── Dockerfile
@@ -239,10 +243,12 @@ kubectl create secret generic kbot-secret \
 
 2. Install using Helm:
 ```bash
-# From GitHub release
+# From GitHub release (recommended)
 helm install kbot https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/v1.0.0/kbot-0.1.0.tgz \
     --namespace=kbot \
-    --create-namespace
+    --create-namespace \
+    --set teleToken.secretName=kbot-secret \
+    --set teleToken.secretKey=tele-token
 
 # Or from local chart
 helm install kbot ./kbot-0.1.0.tgz \
@@ -259,6 +265,59 @@ kubectl logs -l app.kubernetes.io/name=kbot -n kbot
 ```
 
 See `HELM_CHART_SUMMARY.md` and `MANUAL_TEST.md` for detailed instructions.
+
+## Releases
+
+### Creating a Release
+
+Releases are automated through Make targets and GitHub Actions workflows.
+
+#### Option 1: Using Make (requires GitHub CLI)
+
+```bash
+# Install GitHub CLI if needed
+brew install gh
+gh auth login
+
+# Create release
+make release RELEASE_TAG=v1.0.0
+```
+
+This automatically:
+- Generates release notes from template
+- Packages the Helm chart
+- Creates GitHub release
+- Uploads Helm package
+
+#### Option 2: Using GitHub Actions (Recommended)
+
+1. Go to: https://github.com/YegorMaksymchuk/prometheus-bot/actions/workflows/release.yml
+2. Click "Run workflow"
+3. Fill in parameters:
+   - `version`: Chart version (e.g., `0.1.0`)
+   - `release_tag`: Git tag (e.g., `v1.0.0`)
+   - `release_title`: Release title (optional)
+   - `prerelease`: Mark as pre-release (optional)
+4. Click "Run workflow"
+
+The workflow automatically:
+- Validates and packages the chart
+- Generates release notes
+- Creates git tag
+- Creates GitHub release
+- Uploads Helm package
+
+#### Available Make Targets
+
+```bash
+make release              # Full release process
+make release-package      # Package Helm chart only
+make release-notes       # Generate release notes only
+make release-create      # Create GitHub release
+make release-upload      # Upload to existing release
+```
+
+For detailed release documentation, see `RELEASE_AUTOMATION.md` and `RELEASE_INSTRUCTIONS.md`.
 
 ## Contributing
 1. Fork the repository
