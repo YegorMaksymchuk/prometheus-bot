@@ -6,8 +6,11 @@ This is a Telegram bot project written in Go language. The bot is designed to ha
 ## Technical Requirements
 
 ### Prerequisites
-- Go 1.21 or higher
+- Go 1.24.3 or higher
 - Git
+- Docker (for container builds)
+- Kubernetes cluster (for deployment)
+- Helm 3.x (for Kubernetes deployment)
 - Telegram Bot Token (obtained from BotFather)
 
 ### Dependencies
@@ -23,17 +26,30 @@ This is a Telegram bot project written in Go language. The bot is designed to ha
 ├── internal/
 │   └── bot/
 │       └── bot.go
+├── kbot/                    # Helm chart
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+├── .github/
+│   └── workflows/
+│       └── docker-build-push.yml
 ├── go.mod
 ├── go.sum
+├── Dockerfile
+├── Makefile
 └── README.md
 ```
 
 ## Setup Instructions
 
+### Quick Start with Makefile
+
+The project includes a comprehensive Makefile for easy development and deployment.
+
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd bot-telegram
+git clone https://github.com/YegorMaksymchuk/prometheus-bot.git
+cd prometheus-bot
 ```
 
 2. Install dependencies:
@@ -44,26 +60,65 @@ go mod download
 3. Set up environment variables:
 ```bash
 export TELE_TOKEN="your-telegram-bot-token"
+# Or create .env file
+echo "TELE_TOKEN=your-telegram-bot-token" > .env
 ```
 
-4. Build the project:
+4. Build and run using Makefile:
+```bash
+# Build for current platform
+make build
+
+# Run the bot
+make run
+
+# Or see all available commands
+make help
+```
+
+### Manual Setup
+
+1. Install dependencies:
+```bash
+go mod download
+```
+
+2. Build the project:
 ```bash
 go build -o kbot cmd/kbot/main.go
 ```
 
-5. Run the bot:
+3. Run the bot:
 ```bash
 ./kbot
 ```
 
 ## Build Image and Run in Container
 
-### Local Build
-1. Build container
+### Using Makefile (Recommended)
+
+```bash
+# Build Docker image for current platform
+make image
+
+# Run tests in Docker
+make docker-test
+
+# Run the bot in Docker container
+make docker-run
+
+# Build for all platforms
+make docker-build-all
+```
+
+### Local Build (Manual)
+
+1. Build container:
 ```bash
 docker build -t kbot:latest .
 ```
-2. Run container
+
+2. Run container:
 ```bash
 docker run -e TELE_TOKEN=${TELE_TOKEN} kbot:latest
 ```
@@ -82,12 +137,22 @@ docker run -e TELE_TOKEN=${TELE_TOKEN} ghcr.io/yehormaksymchuk/prometheus-bot:la
 
 ### CI/CD
 
-Docker images are automatically built and pushed to `ghcr.io/yehormaksymchuk/prometheus-bot` on:
+Docker images are automatically built and pushed to `ghcr.io/yehormaksymchuk/prometheus-bot` via GitHub Actions:
+
+**Workflow**: `.github/workflows/docker-build-push.yml`
+
+**Triggers:**
 - Push to `main` branch (tags as `latest`)
 - Git tags starting with `v*` (e.g., `v1.0.0`)
-- Pull requests (build only, no push)
+- Pull requests (test and build only, no push)
+- Manual dispatch
 
-See `.github/workflows/docker-build-push.yml` for details.
+**Process:**
+1. **Test Job**: Runs `make test` and `make lint`
+2. **Build Job**: Builds multi-arch Docker image (linux/amd64, linux/arm64)
+3. **Push**: Pushes to GitHub Container Registry
+
+**Image**: `ghcr.io/yehormaksymchuk/prometheus-bot:latest`
 
 ## Development Rules
 
@@ -123,7 +188,16 @@ See `.github/workflows/docker-build-push.yml` for details.
 2. Maintain test coverage above 80%
 3. Run tests before committing:
 ```bash
+# Using Makefile
+make test
+
+# Or manually
 go test ./...
+```
+
+4. Run tests in Docker for all platforms:
+```bash
+make docker-test-all
 ```
 
 ### Error Handling
@@ -149,12 +223,52 @@ go test ./...
 - Commands
 - Error handling for invalid inputs
 
+## Kubernetes Deployment
+
+### Using Helm Chart
+
+The project includes a Helm chart for easy Kubernetes deployment.
+
+1. Create namespace and secret:
+```bash
+kubectl create namespace kbot
+kubectl create secret generic kbot-secret \
+    --from-literal=tele-token=<YOUR_TELEGRAM_TOKEN> \
+    --namespace=kbot
+```
+
+2. Install using Helm:
+```bash
+# From GitHub release
+helm install kbot https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/v1.0.0/kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace
+
+# Or from local chart
+helm install kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
+    --set teleToken.secretName=kbot-secret \
+    --set teleToken.secretKey=tele-token
+```
+
+3. Check deployment:
+```bash
+kubectl get all -n kbot
+kubectl logs -l app.kubernetes.io/name=kbot -n kbot
+```
+
+See `HELM_CHART_SUMMARY.md` and `MANUAL_TEST.md` for detailed instructions.
+
 ## Contributing
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create a feature branch (e.g., `feature/my-feature`)
+3. Make your changes and run tests: `make test`
+4. Commit your changes (follow conventional commits)
+5. Push to the branch
+6. Create a Pull Request
+
+**Note**: All PRs automatically run tests via GitHub Actions before merge.
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.

@@ -52,18 +52,44 @@ https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/v1.0.0/kbot-
 
 ## Встановлення чарту
 
-```bash
-# З GitHub релізу
-helm install kbot https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/v1.0.0/kbot-0.1.0.tgz
+### Перед встановленням
 
-# Або з локального файлу
-helm install kbot ./kbot-0.1.0.tgz
+1. Створіть namespace:
+```bash
+kubectl create namespace kbot
 ```
 
-## Перед встановленням
+2. Створіть Kubernetes Secret з Telegram токеном:
+```bash
+kubectl create secret generic kbot-secret \
+    --from-literal=tele-token=<YOUR_TELEGRAM_TOKEN> \
+    --namespace=kbot
+```
 
-Створіть Kubernetes Secret з Telegram токеном:
+### Встановлення
 
 ```bash
-kubectl create secret generic kbot-secret --from-literal=tele-token=<YOUR_TELEGRAM_TOKEN>
+# З GitHub релізу
+helm install kbot https://github.com/YegorMaksymchuk/prometheus-bot/releases/download/v1.0.0/kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
+    --set teleToken.secretName=kbot-secret \
+    --set teleToken.secretKey=tele-token
+
+# Або з локального файлу
+helm install kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
+    --set teleToken.secretName=kbot-secret \
+    --set teleToken.secretKey=tele-token
+```
+
+### Перевірка
+
+```bash
+# Перевірити статус
+kubectl get all -n kbot
+
+# Переглянути логи
+kubectl logs -l app.kubernetes.io/name=kbot -n kbot -f
 ```
