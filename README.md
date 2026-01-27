@@ -158,6 +158,65 @@ Docker images are automatically built and pushed to `ghcr.io/yehormaksymchuk/pro
 
 **Image**: `ghcr.io/yehormaksymchuk/prometheus-bot:latest`
 
+#### CI/CD Pipeline for Develop Branch
+
+The project includes a complete CI/CD pipeline that automatically builds, packages, and deploys the bot when code is pushed to the `develop` branch.
+
+**Workflow**: `.github/workflows/cicd-develop.yml`
+
+**Triggers:**
+- Push to `develop` branch
+- Manual dispatch
+
+**Pipeline Flow:**
+
+```mermaid
+graph LR
+    A[Developer Push to develop] --> B[GitHub Actions Triggered]
+    B --> C[Test Job]
+    C --> D[Build & Push Image]
+    D --> E[Update Helm Chart]
+    E --> F[Trigger ArgoCD]
+    F --> G[Kubernetes Deployment]
+    
+    C --> C1[Run Tests]
+    C --> C2[Run Linter]
+    
+    D --> D1[Build Docker Image]
+    D --> D2[Tag: v<version>-<sha>-linux-amd64]
+    D --> D3[Push to ghcr.io]
+    
+    E --> E1[Update values.yaml]
+    E --> E2[Update Chart.yaml]
+    E --> E3[Commit to Git]
+    
+    F --> F1[GitOps Auto-sync]
+    F --> F2[Or API Sync]
+    
+    style A fill:#e1f5ff
+    style G fill:#d4edda
+    style D3 fill:#fff3cd
+    style F1 fill:#f8d7da
+```
+
+**Process:**
+1. **Test Job**: Runs `make test` and `make lint` to validate code quality
+2. **Build and Push Job**: 
+   - Builds Docker image for `linux/amd64` platform
+   - Tags image as `v<version>-<short-sha>-linux-amd64` (e.g., `v1.0.0-106879e-linux-amd64`)
+   - Pushes to GitHub Container Registry: `ghcr.io/<owner>/kbot:<tag>`
+3. **Update Helm Chart Job**:
+   - Updates `kbot/values.yaml` with new image tag, registry, and repository
+   - Increments chart version in `kbot/Chart.yaml`
+   - Commits and pushes changes back to `develop` branch
+4. **Trigger ArgoCD Job**:
+   - ArgoCD automatically detects Git changes and syncs (GitOps approach)
+   - Optionally triggers sync via ArgoCD API if credentials are configured
+
+**Image Format**: `ghcr.io/<owner>/kbot:v<version>-<sha>-linux-amd64`
+
+**Example**: `ghcr.io/yehormaksymchuk/kbot:v1.0.0-106879e-linux-amd64`
+
 ## Development Rules
 
 ### Code Style

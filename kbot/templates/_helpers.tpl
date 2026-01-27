@@ -60,3 +60,10 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Create image reference
+*/}}
+{{- define "kbot.image" -}}
+{{- printf "%s/%s:%s-%s-%s" .Values.image.registry .Values.image.repository .Values.image.tag .Values.image.os .Values.image.arch }}
+{{- end }}

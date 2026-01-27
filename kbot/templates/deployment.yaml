@@ -18,34 +18,20 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "kbot.labels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- include "kbot.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "kbot.serviceAccountName" . }}
-      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Release.Name }}
-          {{- with .Values.securityContext }}
+        - name: {{ .Chart.Name }}
           securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- $imageName := .Values.image.name }}
-          {{- $imageTag := .Values.image.tag }}
-          {{- $imageArch := .Values.image.arch }}
-          {{- if and $imageName (ne $imageName "") }}
-          image: "{{ .Values.image.repository }}/{{ $imageName }}:{{ $imageTag }}{{- if and $imageArch (ne $imageArch "") }}-{{ $imageArch }}{{- end }}"
-          {{- else }}
-          image: "{{ .Values.image.repository }}:{{ $imageTag }}{{- if and $imageArch (ne $imageArch "") }}-{{ $imageArch }}{{- end }}"
-          {{- end }}
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ include "kbot.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: TELE_TOKEN
@@ -57,26 +43,28 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
-          {{- with .Values.livenessProbe }}
           livenessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.readinessProbe }}
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "ps aux | grep -v grep | grep kbot || exit 1"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.resources }}
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "ps aux | grep -v grep | grep kbot || exit 1"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.volumeMounts }}
-          volumeMounts:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-      {{- with .Values.volumes }}
-      volumes:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+            {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

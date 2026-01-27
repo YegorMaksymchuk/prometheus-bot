@@ -5,7 +5,9 @@
 APP_NAME := kbot
 BINARY_NAME := $(APP_NAME)
 VERSION ?= latest
-REGISTRY ?= quay.io
+REGISTRY ?= ghcr.io
+IMAGE_REGISTRY := $(REGISTRY)
+IMAGE_REPO ?= yehormaksymchuk/kbot
 IMAGE_NAME := $(APP_NAME)
 IMAGE_TAG := $(IMAGE_NAME):$(VERSION)
 BIN_DIR := bin
@@ -51,6 +53,7 @@ BUILDER_NAME := multiarch-builder
 .PHONY: image docker-test docker-test-all docker-run docker-build-all
 .PHONY: setup-buildx
 .PHONY: release release-package release-create release-upload release-notes
+.PHONY: update-chart-values update-chart-image
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -324,6 +327,33 @@ release-upload: check-gh release-package ## Upload chart to existing release
 	fi
 	@gh release upload $(RELEASE_TAG) $(CHART_NAME)-$(CHART_VERSION).tgz --clobber
 	@echo "Chart uploaded successfully"
+
+# Helm chart update targets
+update-chart-image: ## Update Helm chart values.yaml with new image tag (requires IMAGE_TAG, IMAGE_REGISTRY, IMAGE_REPO)
+	@if [ -z "$(IMAGE_TAG)" ]; then \
+		echo "Error: IMAGE_TAG is not set"; \
+		echo "Usage: make update-chart-image IMAGE_TAG=v1.0.0-abc1234"; \
+		exit 1; \
+	fi
+	@echo "=== Updating Helm chart values.yaml ==="
+	@if [ ! -f "$(CHART_DIR)/values.yaml" ]; then \
+		echo "Error: Chart values file $(CHART_DIR)/values.yaml not found"; \
+		exit 1; \
+	fi
+	@echo "Updating image.registry to $(IMAGE_REGISTRY)"
+	@sed -i.bak "s|^  registry:.*|  registry: \"$(IMAGE_REGISTRY)\"|" $(CHART_DIR)/values.yaml
+	@echo "Updating image.repository to $(IMAGE_REPO)"
+	@sed -i.bak "s|^  repository:.*|  repository: \"$(IMAGE_REPO)\"|" $(CHART_DIR)/values.yaml
+	@echo "Updating image.tag to $(IMAGE_TAG)"
+	@sed -i.bak "s|^  tag:.*|  tag: \"$(IMAGE_TAG)\"|" $(CHART_DIR)/values.yaml
+	@echo "Setting image.os to linux"
+	@sed -i.bak "s|^  os:.*|  os: linux|" $(CHART_DIR)/values.yaml
+	@echo "Setting image.arch to amd64"
+	@sed -i.bak "s|^  arch:.*|  arch: amd64|" $(CHART_DIR)/values.yaml
+	@rm -f $(CHART_DIR)/values.yaml.bak
+	@echo "✓ Helm chart values.yaml updated successfully"
+
+update-chart-values: update-chart-image ## Alias for update-chart-image
 
 # Cleanup
 clean: ## Remove test results, artifacts, binaries, and Docker images
