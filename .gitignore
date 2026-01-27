@@ -4,7 +4,8 @@
 *.dll
 *.so
 *.dylib
-/kbot
+# Note: Binaries are built to bin/ directory (see bin/ below)
+# The kbot/ directory at root is the Helm chart and should be tracked
 bin/kbot*
 
 # Test binary, built with `go test -c`
