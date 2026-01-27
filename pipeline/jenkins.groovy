@@ -55,27 +55,43 @@ pipeline {
             steps {
                 echo "Setting up Go ${GO_VERSION} environment..."
                 script {
-                    // Check if Go is installed and verify version
-                    def goVersion = sh(returnStdout: true, script: 'go version 2>&1 || echo "not installed"').trim()
-                    echo "Current Go version: ${goVersion}"
+                    // Set Go paths in workspace
+                    env.GOROOT = "${env.WORKSPACE}/go"
+                    env.GOPATH = "${env.WORKSPACE}/gopath"
                     
-                    // If Go is not installed or wrong version, install/setup Go
-                    if (!goVersion.contains("go${GO_VERSION}")) {
-                        echo "Installing Go ${GO_VERSION}..."
+                    // Check if Go is already available in PATH
+                    def goVersion = sh(returnStdout: true, script: 'which go > /dev/null 2>&1 && go version || echo "not found"').trim()
+                    
+                    if (goVersion.contains("go${GO_VERSION}")) {
+                        echo "Go ${GO_VERSION} is already installed: ${goVersion}"
+                        sh 'go version'
+                    } else {
+                        echo "Installing Go ${GO_VERSION} to workspace..."
                         sh """
-                            # Download and install Go
-                            wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -O /tmp/go${GO_VERSION}.tar.gz
-                            sudo rm -rf /usr/local/go
-                            sudo tar -C /usr/local -xzf /tmp/go${GO_VERSION}.tar.gz
-                            rm /tmp/go${GO_VERSION}.tar.gz
+                            # Install Go to workspace (no sudo required)
+                            cd ${env.WORKSPACE}
+                            
+                            # Download Go if not already downloaded
+                            if [ ! -f go${GO_VERSION}.linux-amd64.tar.gz ]; then
+                                echo "Downloading Go ${GO_VERSION}..."
+                                wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz || curl -L -o go${GO_VERSION}.linux-amd64.tar.gz https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+                            fi
+                            
+                            # Extract Go
+                            echo "Extracting Go..."
+                            tar -xzf go${GO_VERSION}.linux-amd64.tar.gz
+                            
+                            # Verify installation
+                            ${env.GOROOT}/bin/go version
                         """
                     }
                     
-                    // Set up Go environment
+                    // Set up Go environment and verify
                     sh """
-                        export PATH=\$PATH:/usr/local/go/bin
-                        export GOPATH=\$HOME/go
-                        export GOROOT=/usr/local/go
+                        export GOROOT=${env.GOROOT}
+                        export GOPATH=${env.GOPATH}
+                        export PATH=${env.GOROOT}/bin:\$PATH
+                        mkdir -p ${env.GOPATH}
                         go version
                         go env
                     """
@@ -87,7 +103,9 @@ pipeline {
             steps {
                 echo "Installing Go dependencies..."
                 sh """
-                    export PATH=\$PATH:/usr/local/go/bin
+                    export GOROOT=${env.GOROOT}
+                    export GOPATH=${env.GOPATH}
+                    export PATH=${env.GOROOT}/bin:\$PATH
                     go mod download
                     go mod verify
                 """
@@ -101,7 +119,9 @@ pipeline {
             steps {
                 echo "Running tests..."
                 sh """
-                    export PATH=\$PATH:/usr/local/go/bin
+                    export GOROOT=${env.GOROOT}
+                    export GOPATH=${env.GOPATH}
+                    export PATH=${env.GOROOT}/bin:\$PATH
                     go test -v -coverprofile=coverage.out ./... || true
                     if [ -f coverage.out ]; then
                         go tool cover -func=coverage.out || true
@@ -117,7 +137,9 @@ pipeline {
             steps {
                 echo "Running linter..."
                 sh """
-                    export PATH=\$PATH:/usr/local/go/bin
+                    export GOROOT=${env.GOROOT}
+                    export GOPATH=${env.GOPATH}
+                    export PATH=${env.GOROOT}/bin:\$PATH
                     echo "Formatting code with go fmt..."
                     go fmt ./...
                     echo "Running go vet..."
@@ -131,7 +153,9 @@ pipeline {
                 echo "Building binary for platform: ${PLATFORM}"
                 echo "Target: ${BINARY_NAME}"
                 sh """
-                    export PATH=\$PATH:/usr/local/go/bin
+                    export GOROOT=${env.GOROOT}
+                    export GOPATH=${env.GOPATH}
+                    export PATH=${env.GOROOT}/bin:\$PATH
                     export GOOS=${GOOS}
                     export GOARCH=${GOARCH}
                     mkdir -p ${BIN_DIR}
@@ -194,7 +218,7 @@ pipeline {
         }
         always {
             echo "Pipeline execution completed."
-            cleanWs()
+            deleteDir()
         }
     }
 }
