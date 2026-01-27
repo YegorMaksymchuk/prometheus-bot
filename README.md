@@ -22,25 +22,28 @@ This is a Telegram bot project written in Go language. The bot is designed to ha
 .
 ├── cmd/
 │   └── kbot/
-│       └── main.go
+│       └── main.go           # Application entry point
 ├── internal/
 │   └── bot/
-│       └── bot.go
-├── kbot/                    # Helm chart
-│   ├── Chart.yaml
-│   ├── values.yaml
+│       └── bot.go            # Bot logic and handlers
+├── kbot/                     # Helm chart
+│   ├── Chart.yaml            # Chart metadata
+│   ├── values.yaml           # Default configuration
 │   └── templates/
+│       ├── _helpers.tpl      # Template helpers (incl. kbot.image)
+│       ├── deployment.yaml   # Kubernetes Deployment
+│       ├── service.yaml      # Kubernetes Service
+│       └── NOTES.txt         # Post-install notes
 ├── .github/
 │   └── workflows/
-│       ├── docker-build-push.yml
-│       └── release.yml
-├── RELEASE_NOTES_TEMPLATE.md
-├── RELEASE_AUTOMATION.md
-├── RELEASE_INSTRUCTIONS.md
+│       ├── cicd-develop.yml  # CI/CD pipeline for develop branch
+│       ├── docker-build-push.yml  # Build for main branch
+│       └── release.yml       # Release workflow
+├── doc/                      # Documentation
+├── Dockerfile                # Multi-stage Docker build
+├── Makefile                  # Build automation
 ├── go.mod
 ├── go.sum
-├── Dockerfile
-├── Makefile
 └── README.md
 ```
 
@@ -288,6 +291,24 @@ make docker-test-all
 
 ## Kubernetes Deployment
 
+### Helm Chart Configuration
+
+The Helm chart uses the following image configuration format in `kbot/values.yaml`:
+
+```yaml
+image:
+  registry: "ghcr.io"           # Container registry
+  repository: "yehormaksymchuk/kbot"  # Image repository (owner/name)
+  tag: "v1.0.0-9b2d081"         # Version tag (version-commit)
+  os: linux                     # Target OS
+  arch: amd64                   # Target architecture
+  pullPolicy: IfNotPresent
+```
+
+This generates the image reference: `ghcr.io/yehormaksymchuk/kbot:v1.0.0-9b2d081-linux-amd64`
+
+The CI/CD pipeline automatically updates these values when pushing to the `develop` branch.
+
 ### Using Helm Chart
 
 The project includes a Helm chart for easy Kubernetes deployment.
@@ -323,7 +344,305 @@ kubectl get all -n kbot
 kubectl logs -l app.kubernetes.io/name=kbot -n kbot
 ```
 
-See `HELM_CHART_SUMMARY.md` and `MANUAL_TEST.md` for detailed instructions.
+See `doc/HELM_CHART_SUMMARY.md` and `doc/MANUAL_TEST.md` for detailed instructions.
+
+## Local Testing with k3d Cluster and ArgoCD
+
+This section provides a step-by-step guide to test the complete CI/CD pipeline locally using k3d (k3s in Docker) with ArgoCD.
+
+### Prerequisites
+
+Install the following tools:
+
+```bash
+# macOS with Homebrew
+brew install k3d kubectl helm argocd
+
+# Verify installations
+k3d version
+kubectl version --client
+helm version
+argocd version --client
+```
+
+### Step 1: Create k3d Cluster
+
+```bash
+# Create a new k3d cluster with port mapping
+k3d cluster create kbot-cluster \
+  --servers 1 \
+  --agents 2 \
+  --port "8080:80@loadbalancer" \
+  --port "8443:443@loadbalancer"
+
+# Verify cluster is running
+kubectl cluster-info
+kubectl get nodes
+```
+
+### Step 2: Install ArgoCD
+
+```bash
+# Create ArgoCD namespace
+kubectl create namespace argocd
+
+# Install ArgoCD
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Wait for ArgoCD to be ready
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
+
+# Get initial admin password
+ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+echo "ArgoCD Admin Password: $ARGOCD_PASSWORD"
+```
+
+### Step 3: Access ArgoCD UI
+
+```bash
+# Port-forward ArgoCD server (run in background or separate terminal)
+kubectl port-forward svc/argocd-server -n argocd 9443:443 &
+
+# Access ArgoCD UI at: https://localhost:9443
+# Login with:
+#   Username: admin
+#   Password: <ARGOCD_PASSWORD from Step 2>
+```
+
+Alternatively, use ArgoCD CLI:
+
+```bash
+# Login via CLI
+argocd login localhost:9443 --username admin --password $ARGOCD_PASSWORD --insecure
+```
+
+### Step 4: Create Telegram Token Secret
+
+```bash
+# Create kbot namespace
+kubectl create namespace kbot
+
+# Create secret with your Telegram token
+kubectl create secret generic kbot-secret \
+  --from-literal=tele-token=<YOUR_TELEGRAM_BOT_TOKEN> \
+  --namespace=kbot
+
+# Verify secret
+kubectl get secret kbot-secret -n kbot
+```
+
+### Step 5: Create ArgoCD Application
+
+Create the ArgoCD Application that watches the `develop` branch:
+
+```bash
+# Using kubectl
+kubectl apply -f - <<EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kbot
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YegorMaksymchuk/prometheus-bot.git
+    targetRevision: develop
+    path: kbot
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kbot
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+EOF
+
+# Or using ArgoCD CLI
+argocd app create kbot \
+  --repo https://github.com/YegorMaksymchuk/prometheus-bot.git \
+  --path kbot \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace kbot \
+  --revision develop \
+  --sync-policy automated \
+  --auto-prune \
+  --self-heal
+```
+
+### Step 6: Verify Deployment
+
+```bash
+# Check ArgoCD application status
+argocd app get kbot
+# Or via kubectl
+kubectl get application kbot -n argocd -o yaml
+
+# Check kbot deployment
+kubectl get all -n kbot
+
+# Check pod status
+kubectl get pods -n kbot -w
+
+# View pod logs
+kubectl logs -l app.kubernetes.io/name=kbot -n kbot -f
+```
+
+### Step 7: Test the Bot
+
+Once the pod is running:
+
+1. Open Telegram and find your bot
+2. Send `/start` - should receive welcome message
+3. Send `/help` - should see available commands
+4. Send `/status` - should see "Bot is running and healthy!"
+
+### Step 8: Test GitOps Flow
+
+Make a change and push to `develop` branch to test the full CI/CD pipeline:
+
+```bash
+# Make a small change (e.g., update a comment)
+git checkout develop
+
+# Make changes...
+git add .
+git commit -m "test: verify GitOps flow"
+git push origin develop
+```
+
+**Expected flow:**
+1. GitHub Actions triggers CI/CD pipeline
+2. Tests run and pass
+3. Docker image is built and pushed to ghcr.io
+4. Helm chart `values.yaml` is updated with new image tag
+5. ArgoCD detects the change and syncs automatically
+6. New pod is deployed with updated image
+
+Monitor the sync:
+
+```bash
+# Watch ArgoCD sync status
+argocd app get kbot --refresh
+
+# Watch pods being updated
+kubectl get pods -n kbot -w
+
+# Check the image being used
+kubectl get deployment -n kbot -o jsonpath='{.items[0].spec.template.spec.containers[0].image}'
+```
+
+### Step 9: Validate Image Format
+
+After CI/CD completes, verify the image follows the required format:
+
+```bash
+# Get current image
+IMAGE=$(kubectl get deployment -n kbot -o jsonpath='{.items[0].spec.template.spec.containers[0].image}')
+echo "Current image: $IMAGE"
+
+# Expected format: ghcr.io/yehormaksymchuk/kbot:v1.0.0-<sha>-linux-amd64
+```
+
+### Cleanup
+
+```bash
+# Delete ArgoCD application
+argocd app delete kbot --yes
+# Or
+kubectl delete application kbot -n argocd
+
+# Delete kbot namespace
+kubectl delete namespace kbot
+
+# Delete ArgoCD
+kubectl delete namespace argocd
+
+# Delete k3d cluster
+k3d cluster delete kbot-cluster
+```
+
+### Troubleshooting
+
+#### Pod stuck in ImagePullBackOff
+
+```bash
+# Check pod events
+kubectl describe pod -l app.kubernetes.io/name=kbot -n kbot
+
+# Verify image exists
+docker pull ghcr.io/yehormaksymchuk/kbot:<tag>-linux-amd64
+```
+
+#### ArgoCD not syncing
+
+```bash
+# Force sync
+argocd app sync kbot --force
+
+# Check application status
+argocd app get kbot
+
+# Check ArgoCD logs
+kubectl logs -l app.kubernetes.io/name=argocd-application-controller -n argocd
+```
+
+#### Bot not responding
+
+```bash
+# Check pod logs for errors
+kubectl logs -l app.kubernetes.io/name=kbot -n kbot
+
+# Verify TELE_TOKEN is set
+kubectl exec -it $(kubectl get pod -l app.kubernetes.io/name=kbot -n kbot -o jsonpath='{.items[0].metadata.name}') -n kbot -- printenv | grep TELE
+```
+
+### CI/CD Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           GitOps CI/CD Pipeline                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────┐     ┌─────────────────────────────────────────────────────┐   │
+│  │Developer │     │                  GitHub Actions                      │   │
+│  │          │     │  ┌─────────┐  ┌───────────┐  ┌──────────────────┐   │   │
+│  │  Push to │────▶│  │  Test   │─▶│Build/Push │─▶│ Update Helm Chart│   │   │
+│  │  develop │     │  │  Job    │  │   Job     │  │      Job         │   │   │
+│  └──────────┘     │  └─────────┘  └─────┬─────┘  └────────┬─────────┘   │   │
+│                   │                     │                  │             │   │
+│                   └─────────────────────┼──────────────────┼─────────────┘   │
+│                                         │                  │                 │
+│                                         ▼                  ▼                 │
+│                               ┌─────────────────┐  ┌──────────────┐          │
+│                               │    ghcr.io      │  │  Git Repo    │          │
+│                               │  Container      │  │  (values.yaml│          │
+│                               │  Registry       │  │   updated)   │          │
+│                               └────────┬────────┘  └──────┬───────┘          │
+│                                        │                  │                  │
+│                                        │                  │ (GitOps)         │
+│                                        │                  ▼                  │
+│                                        │         ┌──────────────┐            │
+│                                        │         │   ArgoCD     │            │
+│                                        │         │  (Auto-sync) │            │
+│                                        │         └──────┬───────┘            │
+│                                        │                │                    │
+│                                        ▼                ▼                    │
+│                               ┌─────────────────────────────────┐            │
+│                               │        Kubernetes Cluster        │            │
+│                               │  ┌─────────────────────────────┐│            │
+│                               │  │      kbot Deployment        ││            │
+│                               │  │  (pulls image from ghcr.io) ││            │
+│                               │  └─────────────────────────────┘│            │
+│                               └─────────────────────────────────┘            │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Image Format: ghcr.io/<owner>/kbot:v<version>-<sha>-linux-amd64
+Example:      ghcr.io/yehormaksymchuk/kbot:v1.0.0-9b2d081-linux-amd64
+```
 
 ## Releases
 
