@@ -5,7 +5,37 @@
 1. Kubernetes кластер доступний (minikube, kind, k3d, або інший)
 2. `kubectl` налаштовано та підключено до кластера
 3. `helm` встановлено
-4. Docker образ `ghcr.io/YegorMaksymchuk/kbot:latest-amd64` доступний (або змініть в values.yaml)
+4. Docker образ `ghcr.io/yegormaksymchuk/prometheus-bot:latest` доступний (або змініть в values.yaml)
+
+## Розгортання в локальному кластері (k3d)
+
+### Створення локального кластера k3d
+
+```bash
+# Створити новий k3d кластер
+k3d cluster create kbot-demo
+
+# Перевірити підключення
+kubectl cluster-info
+kubectl get nodes
+```
+
+### Перевірка доступних тегів образу
+
+Перед встановленням чарту переконайтеся, що образ доступний:
+
+```bash
+# Перевірити доступність образу з тегом latest (multi-arch)
+docker pull ghcr.io/yegormaksymchuk/prometheus-bot:latest
+
+# Перевірити інформацію про образ
+docker inspect ghcr.io/yegormaksymchuk/prometheus-bot:latest
+
+# Перевірити доступні теги через GitHub API (якщо маєте доступ)
+# Або через веб-інтерфейс: https://github.com/yegormaksymchuk/prometheus-bot/pkgs/container/prometheus-bot
+```
+
+**Важливо**: GitHub Container Registry пушить multi-arch образи з тегом `latest` (без суфіксу архітектури). Тег `latest-amd64` не існує.
 
 ## Крок 1: Перевірка кластера
 
@@ -44,25 +74,44 @@ kubectl describe secret kbot-secret -n kbot
 
 ## Крок 4: Встановлення Helm чарту
 
+### Варіант 1: З використанням значень за замовчуванням (рекомендовано)
+
 ```bash
-# Встановити чарт в namespace kbot
+# Встановити чарт в namespace kbot з значеннями за замовчуванням
 helm install kbot ./kbot-0.1.0.tgz \
     --namespace=kbot \
     --create-namespace \
     --set teleToken.secretName=kbot-secret \
     --set teleToken.secretKey=tele-token \
     --wait --timeout 5m
+```
 
-# Або з явними значеннями
+### Варіант 2: З явними значеннями (рекомендовано для multi-arch образів)
+
+```bash
+# Варіант 2a: Використання repository + name (БЕЗ суфіксу архітектури)
+# Це правильний спосіб для multi-arch образів з GitHub Container Registry
 helm install kbot ./kbot-0.1.0.tgz \
     --namespace=kbot \
     --create-namespace \
-    --set image.repository=ghcr.io/YegorMaksymchuk \
+    --set image.repository=ghcr.io/yegormaksymchuk \
+    --set image.name=prometheus-bot \
     --set image.tag=latest \
-    --set image.arch=amd64 \
+    --set teleToken.secretName=kbot-secret \
+    --set teleToken.secretKey=tele-token
+
+# Варіант 2b: Використання повного шляху в repository (БЕЗ суфіксу архітектури)
+helm install kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
+    --set image.repository=ghcr.io/yegormaksymchuk/prometheus-bot \
+    --set image.name="" \
+    --set image.tag=latest \
     --set teleToken.secretName=kbot-secret \
     --set teleToken.secretKey=tele-token
 ```
+
+**Примітка**: Для multi-arch образів (як `latest` з GitHub Container Registry) НЕ встановлюйте `arch` або встановіть `arch=""`. Суфікс архітектури додається тільки якщо `arch` явно встановлено (наприклад, `arch="amd64"`).
 
 ## Крок 5: Перевірка статусу
 
@@ -150,13 +199,99 @@ kubectl get all -n kbot
 ./test-deployment.sh
 ```
 
+## Пояснення помилок
+
+### Помилка: ImagePullBackOff з тегом `latest-amd64`
+
+**Симптоми:**
+```
+Failed to pull image "ghcr.io/yegormaksymchuk/prometheus-bot:latest-amd64": 
+ghcr.io/yegormaksymchuk/prometheus-bot:latest-amd64: not found
+```
+
+**Причина:**
+- GitHub Container Registry пушить multi-arch образи з тегом `latest` (без суфіксу архітектури)
+- Шаблон Helm чарту додавав суфікс `-amd64` навіть коли `arch` не встановлено
+- Тег `latest-amd64` не існує в registry, тому Kubernetes не може підтягнути образ
+
+**Рішення:**
+Не встановлюйте `arch` або встановіть `arch=""` для multi-arch образів:
+```bash
+helm install kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
+    --set image.repository=ghcr.io/yegormaksymchuk \
+    --set image.name=prometheus-bot \
+    --set image.tag=latest \
+    --set teleToken.secretName=kbot-secret \
+    --set teleToken.secretKey=tele-token
+```
+
+### Помилка: Подвійний шлях `/prometheus-bot/prometheus-bot`
+
+**Симптоми:**
+```
+Image: ghcr.io/yegormaksymchuk/prometheus-bot/prometheus-bot:latest-amd64
+```
+
+**Причина:**
+- Ручне редагування deployment з додаванням назви образу до `repository`
+- Якщо `repository` вже містить повний шлях (`ghcr.io/yegormaksymchuk/prometheus-bot`), а `name` також встановлено, виникає подвійний шлях
+
+**Рішення:**
+Використовуйте правильні параметри при встановленні чарту:
+- Або `repository=ghcr.io/yegormaksymchuk` + `name=prometheus-bot`
+- Або `repository=ghcr.io/yegormaksymchuk/prometheus-bot` + `name=""`
+
+### Помилка: Образ не знайдено
+
+**Симптоми:**
+```
+Error: ErrImagePull
+ImagePullBackOff
+```
+
+**Причина:**
+- Неправильний тег образу (наприклад, `latest-amd64` замість `latest`)
+- Образ не існує в registry
+- Проблеми з доступом до registry
+
+**Рішення:**
+1. Перевірте доступність образу локально:
+   ```bash
+   docker pull ghcr.io/yegormaksymchuk/prometheus-bot:latest
+   ```
+
+2. Перевірте правильність тегу в deployment:
+   ```bash
+   kubectl describe deployment kbot -n kbot | grep Image
+   ```
+
+3. Перевстановіть чарт з правильними параметрами (див. Крок 4)
+
 ## Можливі проблеми
 
 ### Проблема: Pod не може підтягнути образ
 
 **Рішення**: Переконайтеся, що образ доступний:
 ```bash
-docker pull ghcr.io/YegorMaksymchuk/kbot:latest-amd64
+# Перевірте доступність образу з тегом latest (multi-arch)
+docker pull ghcr.io/yegormaksymchuk/prometheus-bot:latest
+
+# Перевірте інформацію про образ
+docker inspect ghcr.io/yegormaksymchuk/prometheus-bot:latest | grep -A 5 Arch
+```
+
+**Важливо**: Для multi-arch образів з GitHub Container Registry використовуйте тег `latest` БЕЗ суфіксу архітектури:
+```bash
+helm install kbot ./kbot-0.1.0.tgz \
+    --namespace=kbot \
+    --create-namespace \
+    --set image.repository=ghcr.io/yegormaksymchuk \
+    --set image.name=prometheus-bot \
+    --set image.tag=latest \
+    --set teleToken.secretName=kbot-secret \
+    --set teleToken.secretKey=tele-token
 ```
 
 Або змініть repository в values.yaml на локальний образ.

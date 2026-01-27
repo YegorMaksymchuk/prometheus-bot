@@ -7,14 +7,26 @@ replicaCount: 1
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
-  repository: ghcr.io/yehormaksymchuk
-  # Image name (defaults to Chart.Name, but can be overridden for different image names)
+  # Image repository (registry + owner, e.g., ghcr.io/yegormaksymchuk)
+  # If image.name is empty, repository should contain the full image path (e.g., ghcr.io/yegormaksymchuk/prometheus-bot)
+  repository: ghcr.io/yegormaksymchuk
+  # Image name (optional). If set, will be appended to repository: repository/name:tag-arch
+  # If empty or not set, repository is used as-is: repository:tag-arch
+  # Example: name: prometheus-bot → ghcr.io/yegormaksymchuk/prometheus-bot:latest-amd64
+  # Example: name: "" → ghcr.io/yegormaksymchuk/prometheus-bot:latest-amd64 (repository must contain full path)
   name: prometheus-bot
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: latest
-  arch: amd64
+  # Architecture suffix (e.g., amd64, arm64). 
+  # IMPORTANT: For multi-arch images (like those from GitHub Container Registry), leave this empty or unset.
+  # The architecture suffix is only added if explicitly set.
+  # Examples:
+  #   - arch: "" or not set → ghcr.io/yegormaksymchuk/prometheus-bot:latest (for multi-arch images)
+  #   - arch: "amd64" → ghcr.io/yegormaksymchuk/prometheus-bot:latest-amd64 (for architecture-specific images)
+  #   - arch: "arm64" → ghcr.io/yegormaksymchuk/prometheus-bot:latest-arm64 (for architecture-specific images)
+  arch: ""
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
