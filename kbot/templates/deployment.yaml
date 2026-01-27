@@ -38,7 +38,14 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.image.repository }}/{{ .Values.image.name | default .Chart.Name }}:{{ .Values.image.tag }}-{{ .Values.image.arch | default "amd64" }}"
+          {{- $imageName := .Values.image.name }}
+          {{- $imageTag := .Values.image.tag }}
+          {{- $imageArch := .Values.image.arch }}
+          {{- if and $imageName (ne $imageName "") }}
+          image: "{{ .Values.image.repository }}/{{ $imageName }}:{{ $imageTag }}{{- if and $imageArch (ne $imageArch "") }}-{{ $imageArch }}{{- end }}"
+          {{- else }}
+          image: "{{ .Values.image.repository }}:{{ $imageTag }}{{- if and $imageArch (ne $imageArch "") }}-{{ $imageArch }}{{- end }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: TELE_TOKEN
