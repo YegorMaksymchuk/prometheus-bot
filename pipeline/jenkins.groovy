@@ -96,7 +96,7 @@ pipeline {
         
         stage('Run Tests') {
             when {
-                not { params.SKIP_TESTS }
+                expression { !params.SKIP_TESTS }
             }
             steps {
                 echo "Running tests..."
@@ -112,7 +112,7 @@ pipeline {
         
         stage('Run Linter') {
             when {
-                not { params.SKIP_LINT }
+                expression { !params.SKIP_LINT }
             }
             steps {
                 echo "Running linter..."
