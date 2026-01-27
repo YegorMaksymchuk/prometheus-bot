@@ -5,8 +5,8 @@ replicaCount: 1
 
 image:
   registry: "ghcr.io"
-  repository: "yehormaksymchuk/kbot"
-  tag: "latest"
+  repository: "yegormaksymchuk/kbot"
+  tag: "v1.0.1-f92b7b8"
   os: linux
   arch: amd64
   pullPolicy: IfNotPresent
