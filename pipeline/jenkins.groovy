@@ -55,45 +55,106 @@ pipeline {
             steps {
                 echo "Setting up Go ${GO_VERSION} environment..."
                 script {
-                    // Set Go paths in workspace
-                    env.GOROOT = "${env.WORKSPACE}/go"
-                    env.GOPATH = "${env.WORKSPACE}/gopath"
+                    def goInstalled = false
+                    def goPath = ""
                     
-                    // Check if Go is already available in PATH
-                    def goVersion = sh(returnStdout: true, script: 'which go > /dev/null 2>&1 && go version || echo "not found"').trim()
+                    // First, try to use system Go if available
+                    try {
+                        def systemGo = sh(returnStdout: true, script: 'which go 2>/dev/null', returnStatus: true)
+                        if (systemGo == 0) {
+                            def goVersion = sh(returnStdout: true, script: 'go version 2>&1').trim()
+                            echo "Found system Go: ${goVersion}"
+                            // Use system Go
+                            env.GOROOT = sh(returnStdout: true, script: 'go env GOROOT 2>/dev/null').trim()
+                            env.GOPATH = "${env.WORKSPACE}/gopath"
+                            // Get Go binary directory from system
+                            def goBinDir = sh(returnStdout: true, script: 'dirname $(which go) 2>/dev/null').trim()
+                            goPath = goBinDir ?: "${env.GOROOT}/bin"
+                            goInstalled = true
+                        }
+                    } catch (Exception e) {
+                        echo "System Go not found, will install..."
+                    }
                     
-                    if (goVersion.contains("go${GO_VERSION}")) {
-                        echo "Go ${GO_VERSION} is already installed: ${goVersion}"
-                        sh 'go version'
-                    } else {
+                    // If system Go not found, try Jenkins Tool
+                    if (!goInstalled) {
+                        try {
+                            def goTool = tool name: 'go', type: 'go'
+                            if (goTool) {
+                                env.GOROOT = "${goTool}"
+                                env.GOPATH = "${env.WORKSPACE}/gopath"
+                                goPath = "${goTool}/bin"
+                                echo "Using Jenkins Go tool: ${goTool}"
+                                goInstalled = true
+                            }
+                        } catch (Exception e) {
+                            echo "Jenkins Go tool not configured: ${e.getMessage()}"
+                        }
+                    }
+                    
+                    // If still not found, install to workspace
+                    if (!goInstalled) {
                         echo "Installing Go ${GO_VERSION} to workspace..."
+                        env.GOROOT = "${env.WORKSPACE}/go"
+                        env.GOPATH = "${env.WORKSPACE}/gopath"
+                        goPath = "${env.GOROOT}/bin"
+                        
                         sh """
-                            # Install Go to workspace (no sudo required)
+                            set -e
                             cd ${env.WORKSPACE}
                             
-                            # Download Go if not already downloaded
+                            # Download Go with checksum verification
                             if [ ! -f go${GO_VERSION}.linux-amd64.tar.gz ]; then
                                 echo "Downloading Go ${GO_VERSION}..."
-                                wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz || curl -L -o go${GO_VERSION}.linux-amd64.tar.gz https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+                                wget -q --show-progress https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz || \\
+                                    curl -L -o go${GO_VERSION}.linux-amd64.tar.gz https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+                            fi
+                            
+                            # Verify file exists and has reasonable size (> 100MB)
+                            if [ ! -f go${GO_VERSION}.linux-amd64.tar.gz ] || [ \$(stat -c%s go${GO_VERSION}.linux-amd64.tar.gz) -lt 100000000 ]; then
+                                echo "Error: Go archive is missing or too small"
+                                rm -f go${GO_VERSION}.linux-amd64.tar.gz
+                                exit 1
                             fi
                             
                             # Extract Go
                             echo "Extracting Go..."
+                            rm -rf go
                             tar -xzf go${GO_VERSION}.linux-amd64.tar.gz
                             
-                            # Verify installation
-                            ${env.GOROOT}/bin/go version
+                            # Verify extraction
+                            if [ ! -d go/bin ] || [ ! -f go/bin/go ]; then
+                                echo "Error: Go extraction failed"
+                                exit 1
+                            fi
+                            
+                            # Test Go binary
+                            echo "Testing Go installation..."
+                            ./go/bin/go version || exit 1
                         """
                     }
+                    
+                    // Set Go binary path in environment
+                    if (!goPath) {
+                        goPath = "${env.GOROOT}/bin"
+                    }
+                    env.GO_BIN_PATH = goPath
                     
                     // Set up Go environment and verify
                     sh """
                         export GOROOT=${env.GOROOT}
                         export GOPATH=${env.GOPATH}
-                        export PATH=${env.GOROOT}/bin:\$PATH
+                        export PATH=${env.GO_BIN_PATH}:\$PATH
                         mkdir -p ${env.GOPATH}
+                        
+                        echo "Go environment:"
+                        echo "  GOROOT: \${GOROOT}"
+                        echo "  GOPATH: \${GOPATH}"
+                        echo "  PATH: \${PATH}"
+                        
                         go version
-                        go env
+                        go env GOROOT
+                        go env GOPATH
                     """
                 }
             }
@@ -105,7 +166,7 @@ pipeline {
                 sh """
                     export GOROOT=${env.GOROOT}
                     export GOPATH=${env.GOPATH}
-                    export PATH=${env.GOROOT}/bin:\$PATH
+                    export PATH=${env.GO_BIN_PATH}:\$PATH
                     go mod download
                     go mod verify
                 """
@@ -121,7 +182,7 @@ pipeline {
                 sh """
                     export GOROOT=${env.GOROOT}
                     export GOPATH=${env.GOPATH}
-                    export PATH=${env.GOROOT}/bin:\$PATH
+                    export PATH=${env.GO_BIN_PATH}:\$PATH
                     go test -v -coverprofile=coverage.out ./... || true
                     if [ -f coverage.out ]; then
                         go tool cover -func=coverage.out || true
@@ -139,7 +200,7 @@ pipeline {
                 sh """
                     export GOROOT=${env.GOROOT}
                     export GOPATH=${env.GOPATH}
-                    export PATH=${env.GOROOT}/bin:\$PATH
+                    export PATH=${env.GO_BIN_PATH}:\$PATH
                     echo "Formatting code with go fmt..."
                     go fmt ./...
                     echo "Running go vet..."
@@ -155,7 +216,7 @@ pipeline {
                 sh """
                     export GOROOT=${env.GOROOT}
                     export GOPATH=${env.GOPATH}
-                    export PATH=${env.GOROOT}/bin:\$PATH
+                    export PATH=${env.GO_BIN_PATH}:\$PATH
                     export GOOS=${GOOS}
                     export GOARCH=${GOARCH}
                     mkdir -p ${BIN_DIR}
