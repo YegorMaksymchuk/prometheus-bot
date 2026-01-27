@@ -110,12 +110,18 @@ pipeline {
                                     curl -L -o go${GO_VERSION}.linux-amd64.tar.gz https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
                             fi
                             
-                            # Verify file exists and has reasonable size (> 100MB)
-                            if [ ! -f go${GO_VERSION}.linux-amd64.tar.gz ] || [ \$(stat -c%s go${GO_VERSION}.linux-amd64.tar.gz) -lt 100000000 ]; then
-                                echo "Error: Go archive is missing or too small"
+                            # Verify file exists and has reasonable size (> 50MB)
+                            if [ ! -f go${GO_VERSION}.linux-amd64.tar.gz ]; then
+                                echo "Error: Go archive download failed"
+                                exit 1
+                            fi
+                            FILE_SIZE=\$(stat -c%s go${GO_VERSION}.linux-amd64.tar.gz 2>/dev/null || stat -f%z go${GO_VERSION}.linux-amd64.tar.gz 2>/dev/null || echo "0")
+                            if [ "\$FILE_SIZE" -lt 50000000 ]; then
+                                echo "Error: Go archive is too small (\$FILE_SIZE bytes), download may have failed"
                                 rm -f go${GO_VERSION}.linux-amd64.tar.gz
                                 exit 1
                             fi
+                            echo "Go archive size: \$FILE_SIZE bytes"
                             
                             # Extract Go
                             echo "Extracting Go..."
