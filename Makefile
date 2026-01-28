@@ -11,7 +11,7 @@ IMAGE_REPO ?= yehormaksymchuk/kbot
 IMAGE_NAME := $(APP_NAME)
 IMAGE_TAG := $(IMAGE_NAME):$(VERSION)
 BIN_DIR := bin
-GO_VERSION := 1.24.3
+GO_VERSION := 1.23.5
 
 # Detect host platform
 UNAME_S := $(shell uname -s)
