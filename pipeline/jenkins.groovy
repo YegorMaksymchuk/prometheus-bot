@@ -103,30 +103,49 @@ pipeline {
                             set -e
                             cd ${env.WORKSPACE}
                             
-                            # Download Go with checksum verification
-                            if [ ! -f go${GO_VERSION}.linux-amd64.tar.gz ]; then
-                                echo "Downloading Go ${GO_VERSION}..."
-                                wget -q --show-progress https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz || \\
-                                    curl -L -o go${GO_VERSION}.linux-amd64.tar.gz https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
+                            # Clean up any old/corrupted Go installations
+                            echo "Cleaning up any existing Go installations..."
+                            rm -rf go go*.linux-amd64.tar.gz
+                            
+                            # Download Go archive
+                            echo "Downloading Go ${GO_VERSION}..."
+                            ARCHIVE_FILE="go${GO_VERSION}.linux-amd64.tar.gz"
+                            DOWNLOAD_URL="https://go.dev/dl/\${ARCHIVE_FILE}"
+                            
+                            # Try wget first, fallback to curl
+                            if command -v wget >/dev/null 2>&1; then
+                                wget -q --show-progress "\${DOWNLOAD_URL}" -O "\${ARCHIVE_FILE}" || \\
+                                    curl -L -o "\${ARCHIVE_FILE}" "\${DOWNLOAD_URL}"
+                            else
+                                curl -L -o "\${ARCHIVE_FILE}" "\${DOWNLOAD_URL}"
                             fi
                             
                             # Verify file exists and has reasonable size (> 50MB)
-                            if [ ! -f go${GO_VERSION}.linux-amd64.tar.gz ]; then
+                            if [ ! -f "\${ARCHIVE_FILE}" ]; then
                                 echo "Error: Go archive download failed"
                                 exit 1
                             fi
-                            FILE_SIZE=\$(stat -c%s go${GO_VERSION}.linux-amd64.tar.gz 2>/dev/null || stat -f%z go${GO_VERSION}.linux-amd64.tar.gz 2>/dev/null || echo "0")
+                            
+                            FILE_SIZE=\$(stat -c%s "\${ARCHIVE_FILE}" 2>/dev/null || stat -f%z "\${ARCHIVE_FILE}" 2>/dev/null || echo "0")
                             if [ "\$FILE_SIZE" -lt 50000000 ]; then
                                 echo "Error: Go archive is too small (\$FILE_SIZE bytes), download may have failed"
-                                rm -f go${GO_VERSION}.linux-amd64.tar.gz
+                                echo "Removing corrupted archive..."
+                                rm -f "\${ARCHIVE_FILE}"
                                 exit 1
                             fi
                             echo "Go archive size: \$FILE_SIZE bytes"
                             
+                            # Verify it's a valid tar.gz file
+                            if ! tar -tzf "\${ARCHIVE_FILE}" >/dev/null 2>&1; then
+                                echo "Error: Downloaded file is not a valid tar.gz archive"
+                                rm -f "\${ARCHIVE_FILE}"
+                                exit 1
+                            fi
+                            
                             # Extract Go
                             echo "Extracting Go..."
                             rm -rf go
-                            tar -xzf go${GO_VERSION}.linux-amd64.tar.gz
+                            tar -xzf "\${ARCHIVE_FILE}"
                             
                             # Verify extraction
                             if [ ! -d go/bin ] || [ ! -f go/bin/go ]; then
@@ -134,9 +153,20 @@ pipeline {
                                 exit 1
                             fi
                             
-                            # Test Go binary
+                            # Test Go binary works correctly
                             echo "Testing Go installation..."
-                            ./go/bin/go version || exit 1
+                            if ! ./go/bin/go version; then
+                                echo "Error: Go binary test failed"
+                                exit 1
+                            fi
+                            
+                            # Verify Go can run a simple command
+                            if ! ./go/bin/go env GOROOT >/dev/null 2>&1; then
+                                echo "Error: Go binary is corrupted or incompatible"
+                                exit 1
+                            fi
+                            
+                            echo "✓ Go ${GO_VERSION} installed and verified successfully"
                         """
                     }
                     
