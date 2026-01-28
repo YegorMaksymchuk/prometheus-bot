@@ -357,7 +357,10 @@ pipeline {
                     # Verify binary was created
                     if [ -f ${BIN_DIR}/${BINARY_NAME} ]; then
                         ls -lh ${BIN_DIR}/${BINARY_NAME}
-                        file ${BIN_DIR}/${BINARY_NAME}
+                        # Use file command if available (optional)
+                        if command -v file >/dev/null 2>&1; then
+                            file ${BIN_DIR}/${BINARY_NAME}
+                        fi
                         echo "✓ Binary built successfully: ${BIN_DIR}/${BINARY_NAME}"
                     else
                         echo "✗ Error: Binary was not created!"
