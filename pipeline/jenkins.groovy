@@ -98,18 +98,40 @@ pipeline {
                         env.GOROOT = "${env.WORKSPACE}/go"
                         env.GOPATH = "${env.WORKSPACE}/gopath"
                         goPath = "${env.GOROOT}/bin"
-                        
+
                         sh """
                             set -e
                             cd ${env.WORKSPACE}
-                            
+
                             # Clean up any old/corrupted Go installations
                             echo "Cleaning up any existing Go installations..."
-                            rm -rf go go*.linux-amd64.tar.gz
-                            
+                            rm -rf go go*.linux-*.tar.gz
+
+                            # Detect system architecture
+                            SYSTEM_ARCH=\$(uname -m)
+                            echo "Detected system architecture: \${SYSTEM_ARCH}"
+
+                            # Map system architecture to Go architecture
+                            case "\${SYSTEM_ARCH}" in
+                                x86_64|amd64)
+                                    GO_ARCH="amd64"
+                                    ;;
+                                aarch64|arm64)
+                                    GO_ARCH="arm64"
+                                    ;;
+                                armv7l|armhf)
+                                    GO_ARCH="armv6l"
+                                    ;;
+                                *)
+                                    echo "Warning: Unknown architecture \${SYSTEM_ARCH}, defaulting to amd64"
+                                    GO_ARCH="amd64"
+                                    ;;
+                            esac
+                            echo "Using Go architecture: \${GO_ARCH}"
+
                             # Download Go archive
-                            echo "Downloading Go ${GO_VERSION}..."
-                            ARCHIVE_FILE="go${GO_VERSION}.linux-amd64.tar.gz"
+                            echo "Downloading Go ${GO_VERSION} for linux-\${GO_ARCH}..."
+                            ARCHIVE_FILE="go${GO_VERSION}.linux-\${GO_ARCH}.tar.gz"
                             DOWNLOAD_URL="https://go.dev/dl/\${ARCHIVE_FILE}"
                             
                             # Try wget first, fallback to curl
