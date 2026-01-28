@@ -6,7 +6,7 @@ This is a Telegram bot project written in Go language. The bot is designed to ha
 ## Technical Requirements
 
 ### Prerequisites
-- Go 1.24.3 or higher
+- Go 1.23.5 or higher
 - Git
 - Docker (for container builds)
 - Kubernetes cluster (for deployment)

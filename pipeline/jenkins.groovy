@@ -25,7 +25,7 @@ pipeline {
     }
     
     environment {
-        GO_VERSION = '1.24.3'
+        GO_VERSION = '1.23.5'
         APP_NAME = 'kbot'
         BIN_DIR = 'bin'
         PLATFORM = "${params.OS}-${params.ARCH}"
